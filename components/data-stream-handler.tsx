@@ -26,6 +26,7 @@ export function DataStreamHandler({ id }: { id: string }) {
   const { block, setBlock, setMetadata } = useBlock();
   const lastProcessedIndex = useRef(-1);
 
+  console.log('dataStream', dataStream);
   useEffect(() => {
     if (!dataStream?.length) return;
 
