@@ -23,7 +23,8 @@ export function ModelSelector({
 } & React.ComponentProps<typeof Button>) {
   const [open, setOpen] = useState(false);
   const [optimisticModelId, setOptimisticModelId] =
-    useOptimistic(selectedModelId);
+    // useOptimistic(selectedModelId);
+    useOptimistic("video-model"); // HARD CODED
 
   const selectedChatModel = useMemo(
     () => chatModels.find((chatModel) => chatModel.id === optimisticModelId),
