@@ -29,6 +29,7 @@ import { Button } from "./ui/button";
 import { Textarea } from "./ui/textarea";
 import { SuggestedActions } from "./suggested-actions";
 import equal from "fast-deep-equal";
+import posthog from "posthog-js";
 
 function PureMultimodalInput({
   chatId,
@@ -144,6 +145,24 @@ function PureMultimodalInput({
 
   const uploadFile = async (file: File) => {
     if (file.type === "video/mp4") {
+      // Get video duration before upload
+      const duration = await new Promise<number>((resolve) => {
+        const video = document.createElement("video");
+        video.preload = "metadata";
+        video.onloadedmetadata = () => {
+          window.URL.revokeObjectURL(video.src);
+          resolve(video.duration);
+        };
+        video.src = URL.createObjectURL(file);
+      });
+
+      // Track in PostHog
+      posthog?.capture("video_upload_started", {
+        duration_seconds: duration,
+        file_name: file.name,
+        file_size: file.size,
+      });
+
       return new Promise((resolve, reject) => {
         const CHUNK_SIZE = 1024 * 1024; // 1MB chunks
         const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
@@ -175,6 +194,15 @@ function PureMultimodalInput({
               ).toFixed(1);
               console.log(`Upload progress: ${progress}%`);
               toast.info(`Uploading: ${progress}%`, { id: "upload-progress" });
+
+              if (currentChunk + 1 === totalChunks) {
+                // Track successful upload completion
+                posthog?.capture("video_upload_completed", {
+                  duration_seconds: duration,
+                  file_name: file.name,
+                  file_size: file.size,
+                });
+              }
 
               currentChunk++;
 
