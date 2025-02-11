@@ -31,28 +31,31 @@ export const myProvider = customProvider({
         const prompt = options.prompt;
         const geminiVideoInput = options.providerMetadata?.google
           ?.experimental_geminiUri as string | undefined;
+        console.log("geminiVideoInput", options.providerMetadata);
+        const geminiVideoInputType = options.providerMetadata?.google
+          ?.experimental_contentType as string | undefined;
 
-        console.log(
-          "options",
-          JSON.stringify(
-            options.prompt,
-            (key, value) => (key === "data" ? undefined : value),
-            2
-          )
-        );
-        // log options but exclude the .prompt
-        console.log(
-          "options",
-          JSON.stringify(
-            options,
-            (key, value) => (key === "prompt" ? undefined : value),
-            2
-          )
-        );
+        // console.log(
+        //   "options",
+        //   JSON.stringify(
+        //     options.prompt,
+        //     (key, value) => (key === "data" ? undefined : value),
+        //     2
+        //   )
+        // );
+        // // log options but exclude the .prompt
+        // console.log(
+        //   "options",
+        //   JSON.stringify(
+        //     options,
+        //     (key, value) => (key === "prompt" ? undefined : value),
+        //     2
+        //   )
+        // );
 
         const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY!);
         const model = genAI.getGenerativeModel({
-          model: "gemini-2.0-flash-exp",
+          model: "gemini-2.0-flash",
         });
 
         // construct generation input array: include gemini video input if available
@@ -63,7 +66,7 @@ export const myProvider = customProvider({
         if (geminiVideoInput) {
           generationInput.push({
             fileData: {
-              mimeType: "video/mp4",
+              mimeType: geminiVideoInputType || "video/mp4",
               fileUri: geminiVideoInput,
             },
           });

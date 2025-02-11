@@ -78,6 +78,9 @@ export async function POST(request: Request) {
             experimental_geminiUri:
               // @ts-ignore
               userMessage.experimental_attachments?.[0]?.geminiUri,
+            experimental_contentType:
+              // @ts-ignore
+              userMessage.experimental_attachments?.[0]?.contentType || "",
           },
         },
         // experimental_activeTools:
