@@ -64,6 +64,19 @@ export async function POST(request: Request) {
     messages: [{ ...userMessage, createdAt: new Date(), chatId: id }],
   });
 
+  const experimentalGeminiUri =
+    // @ts-ignore
+    userMessage.experimental_attachments?.[0]?.geminiUri;
+  const experimentalContentType =
+    // @ts-ignore
+    userMessage.experimental_attachments?.[0]?.contentType || "";
+
+
+  // remove experimental_attachments from each message
+  messages.forEach((message) => {
+    delete message.experimental_attachments;
+  });
+
   return createDataStreamResponse({
     execute: (dataStream) => {
       console.log("selectedChatModel", selectedChatModel);
@@ -75,12 +88,8 @@ export async function POST(request: Request) {
         providerOptions: {
           google: {
             experimental_videoModel: true,
-            experimental_geminiUri:
-              // @ts-ignore
-              userMessage.experimental_attachments?.[0]?.geminiUri,
-            experimental_contentType:
-              // @ts-ignore
-              userMessage.experimental_attachments?.[0]?.contentType || "",
+            experimental_geminiUri: experimentalGeminiUri,
+            experimental_contentType: experimentalContentType,
           },
         },
         // experimental_activeTools:
