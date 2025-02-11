@@ -1,5 +1,4 @@
 import { put } from "@vercel/blob";
-import { NextResponse } from "next/server";
 import { z } from "zod";
 import { GoogleAIFileManager, FileState } from "@google/generative-ai/server";
 import { writeFile } from "fs/promises";
@@ -31,7 +30,7 @@ export async function POST(request: Request) {
 
   if (!session) {
     console.log("unauthorized request detected");
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   if (request.body === null) {
@@ -46,7 +45,7 @@ export async function POST(request: Request) {
 
     if (!file) {
       console.log("no file found in form data");
-      return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
+      return Response.json({ error: "No file uploaded" }, { status: 400 });
     }
 
     console.log(`validating file: ${(file as any).name}`);
@@ -57,7 +56,7 @@ export async function POST(request: Request) {
         .map((error) => error.message)
         .join(", ");
       console.log(`file validation failed: ${errorMessage}`);
-      return NextResponse.json({ error: errorMessage }, { status: 400 });
+      return Response.json({ error: errorMessage }, { status: 400 });
     }
 
     const filename = (formData.get("file") as File).name;
@@ -97,14 +96,14 @@ export async function POST(request: Request) {
 
         if (geminiFile.state === FileState.FAILED) {
           console.log("gemini processing failed");
-          return NextResponse.json(
+          return Response.json(
             { error: "Video processing failed" },
             { status: 500 }
           );
         }
 
         console.log("gemini processing complete", geminiFile);
-        return NextResponse.json({
+        return Response.json({
           ...blobData,
           // url: geminiFile.uri, // overriding vercel blob url with gemini uri
           geminiUri: geminiFile.uri,
@@ -112,14 +111,14 @@ export async function POST(request: Request) {
       }
 
       console.log("image upload complete");
-      return NextResponse.json(blobData);
+      return Response.json(blobData);
     } catch (error) {
       console.log("upload error:", error);
-      return NextResponse.json({ error: "Upload failed" }, { status: 500 });
+      return Response.json({ error: "Upload failed" }, { status: 500 });
     }
   } catch (error) {
     console.log("request processing error:", error);
-    return NextResponse.json(
+    return Response.json(
       { error: "Failed to process request" },
       { status: 500 }
     );
