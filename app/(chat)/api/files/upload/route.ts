@@ -24,7 +24,6 @@ const FileSchema = z.object({
     ),
 });
 
-export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   console.log("starting file upload request");
