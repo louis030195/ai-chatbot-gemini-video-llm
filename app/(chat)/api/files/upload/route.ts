@@ -24,21 +24,76 @@ const FileSchema = z.object({
     ),
 });
 
-
 export async function POST(request: Request) {
-  console.log("starting file upload request");
   const session = await auth();
-
   if (!session) {
     console.log("unauthorized request detected");
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (request.body === null) {
-    console.log("empty request body detected");
-    return new Response("Request body is empty", { status: 400 });
+  const contentType = request.headers.get("content-type") || "";
+
+  // Handle streaming video upload
+  if (contentType === "video/mp4") {
+    console.log("handling streaming video upload");
+    try {
+      const chunks = [];
+      const reader = request.body!.getReader();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+      }
+
+      const fileBuffer = Buffer.concat(chunks);
+      const filename = `video-${Date.now()}.mp4`;
+
+      console.log("uploading to vercel blob");
+      const blobData = await put(filename, fileBuffer, {
+        access: "public",
+      });
+      console.log(`blob upload successful: ${blobData.url}`);
+
+      console.log("processing with gemini");
+      const fileManager = new GoogleAIFileManager(process.env.GOOGLE_API_KEY!);
+      const tempPath = join(os.tmpdir(), filename);
+      await writeFile(tempPath, fileBuffer);
+
+      console.log("uploading to gemini");
+      const uploadResponse = await fileManager.uploadFile(tempPath, {
+        mimeType: "video/mp4",
+        displayName: filename,
+      });
+      console.log("gemini upload complete, waiting for processing");
+
+      let geminiFile = await fileManager.getFile(uploadResponse.file.name);
+      while (geminiFile.state === FileState.PROCESSING) {
+        console.log("gemini still processing, waiting...");
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        geminiFile = await fileManager.getFile(uploadResponse.file.name);
+      }
+
+      if (geminiFile.state === FileState.FAILED) {
+        console.log("gemini processing failed");
+        return Response.json(
+          { error: "Video processing failed" },
+          { status: 500 }
+        );
+      }
+
+      console.log("gemini processing complete", geminiFile);
+      return Response.json({
+        ...blobData,
+        geminiUri: geminiFile.uri,
+      });
+    } catch (error) {
+      console.log("streaming upload error:", error);
+      return Response.json({ error: "Upload failed" }, { status: 500 });
+    }
   }
 
+  // Handle regular form uploads (existing code)
   try {
     console.log("parsing form data");
     const formData = await request.formData();
@@ -66,10 +121,10 @@ export async function POST(request: Request) {
 
     try {
       console.log("uploading to vercel blob");
-      // const blobData = await put(`${filename}`, fileBuffer, {
-      //   access: "public",
-      // });
-      // console.log(`blob upload successful: ${blobData.url}`);
+      const blobData = await put(`${filename}`, fileBuffer, {
+        access: "public",
+      });
+      console.log(`blob upload successful: ${blobData.url}`);
 
       if (file.type === "video/mp4") {
         console.log("processing mp4 with gemini");
@@ -105,14 +160,14 @@ export async function POST(request: Request) {
 
         console.log("gemini processing complete", geminiFile);
         return Response.json({
-          // ...blobData,
+          ...blobData,
           // url: geminiFile.uri, // overriding vercel blob url with gemini uri
           geminiUri: geminiFile.uri,
         });
       }
 
       console.log("image upload complete");
-      // return Response.json(blobData);
+      return Response.json(blobData);
     } catch (error) {
       console.log("upload error:", error);
       return Response.json({ error: "Upload failed" }, { status: 500 });

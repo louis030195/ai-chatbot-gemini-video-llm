@@ -143,33 +143,48 @@ function PureMultimodalInput({
   ]);
 
   const uploadFile = async (file: File) => {
+    if (file.type === "video/mp4") {
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", "/api/files/upload");
+        xhr.setRequestHeader("Content-Type", "video/mp4");
+
+        xhr.onload = () => {
+          if (xhr.status === 200) {
+            resolve(JSON.parse(xhr.responseText));
+          } else {
+            const error = JSON.parse(xhr.responseText).error;
+            console.log("error", error);
+            toast.error(error);
+            reject(error);
+          }
+        };
+
+        xhr.onerror = () => {
+          reject("Upload failed");
+        };
+
+        xhr.send(file);
+      });
+    }
+
+    // Regular form upload for non-video files
     const formData = new FormData();
     formData.append("file", file);
 
-    try {
-      const response = await fetch("/api/files/upload", {
-        method: "POST",
-        body: formData,
-      });
+    const response = await fetch("/api/files/upload", {
+      method: "POST",
+      body: formData,
+    });
 
-      if (response.ok) {
-        const data = await response.json();
-        const { url, pathname, contentType, geminiUri } = data;
-
-        return {
-          url,
-          name: pathname,
-          contentType: contentType,
-          geminiUri: geminiUri,
-        };
-      }
+    if (!response.ok) {
       const { error } = await response.json();
       console.log("error", error);
       toast.error(error);
-    } catch (error) {
-      console.log("error", error);
-      toast.error("Failed to upload file, please try again!");
+      return;
     }
+
+    return await response.json();
   };
 
   const handleFileChange = useCallback(
