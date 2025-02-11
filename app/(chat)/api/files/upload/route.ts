@@ -66,10 +66,10 @@ export async function POST(request: Request) {
 
     try {
       console.log("uploading to vercel blob");
-      const blobData = await put(`${filename}`, fileBuffer, {
-        access: "public",
-      });
-      console.log(`blob upload successful: ${blobData.url}`);
+      // const blobData = await put(`${filename}`, fileBuffer, {
+      //   access: "public",
+      // });
+      // console.log(`blob upload successful: ${blobData.url}`);
 
       if (file.type === "video/mp4") {
         console.log("processing mp4 with gemini");
@@ -105,14 +105,14 @@ export async function POST(request: Request) {
 
         console.log("gemini processing complete", geminiFile);
         return Response.json({
-          ...blobData,
+          // ...blobData,
           // url: geminiFile.uri, // overriding vercel blob url with gemini uri
           geminiUri: geminiFile.uri,
         });
       }
 
       console.log("image upload complete");
-      return Response.json(blobData);
+      // return Response.json(blobData);
     } catch (error) {
       console.log("upload error:", error);
       return Response.json({ error: "Upload failed" }, { status: 500 });
