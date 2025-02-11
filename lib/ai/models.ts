@@ -80,9 +80,20 @@ export const myProvider = customProvider({
         );
 
         generationInput.push({
-          text: p,
+          text: `
+          You are an expert system administration analyst. Your task is to analyze video content and identify important system administration events like:
+          - File modifications (especially configuration files like settings.json)
+          - Folder deletions (particularly security-related folders like 'hardening')
+          - User management actions (adding/removing users)
+          - Terminal commands execution
+          - System setting changes
+          
+          Focus on providing precise timestamps and clear descriptions of administrative actions.
+          
+          Here is the video content to analyze:
+          ${p}
+          `,
         });
-
         // @ts-ignore
         const result = await model.generateContentStream(generationInput);
 
