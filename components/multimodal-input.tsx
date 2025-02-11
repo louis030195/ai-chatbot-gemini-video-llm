@@ -145,26 +145,65 @@ function PureMultimodalInput({
   const uploadFile = async (file: File) => {
     if (file.type === "video/mp4") {
       return new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open("POST", "/api/files/upload");
-        xhr.setRequestHeader("Content-Type", "video/mp4");
+        const CHUNK_SIZE = 1024 * 1024; // 1MB chunks
+        const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+        let currentChunk = 0;
 
-        xhr.onload = () => {
-          if (xhr.status === 200) {
-            resolve(JSON.parse(xhr.responseText));
-          } else {
-            const error = JSON.parse(xhr.responseText).error;
-            console.log("error", error);
-            toast.error(error);
-            reject(error);
-          }
+        // Function to upload next chunk
+        const uploadNextChunk = (start: number) => {
+          const end = Math.min(start + CHUNK_SIZE, file.size);
+          const chunk = file.slice(start, end);
+
+          const xhr = new XMLHttpRequest();
+
+          xhr.open("POST", "/api/files/upload");
+          xhr.setRequestHeader("Content-Type", "video/mp4");
+          xhr.setRequestHeader(
+            "Content-Range",
+            `bytes ${start}-${end - 1}/${file.size}`
+          );
+          xhr.setRequestHeader("X-File-Name", file.name);
+
+          xhr.onload = () => {
+            if (xhr.status === 200) {
+              const response = JSON.parse(xhr.responseText);
+
+              // Update progress
+              const progress = (
+                ((currentChunk + 1) / totalChunks) *
+                100
+              ).toFixed(1);
+              console.log(`Upload progress: ${progress}%`);
+              toast.info(`Uploading: ${progress}%`, { id: "upload-progress" });
+
+              currentChunk++;
+
+              if (currentChunk < totalChunks) {
+                // Upload next chunk
+                uploadNextChunk(end);
+              } else {
+                // All chunks uploaded
+                resolve(response);
+              }
+            } else {
+              const error = JSON.parse(xhr.responseText).error;
+              console.error("Upload error:", error);
+              toast.error(error);
+              reject(error);
+            }
+          };
+
+          xhr.onerror = () => {
+            console.error("Network error during upload");
+            toast.error("Upload failed - network error");
+            reject("Upload failed");
+          };
+
+          xhr.send(chunk);
         };
 
-        xhr.onerror = () => {
-          reject("Upload failed");
-        };
-
-        xhr.send(file);
+        // Start with first chunk
+        uploadNextChunk(0);
       });
     }
 
@@ -238,12 +277,15 @@ function PureMultimodalInput({
       {(attachments.length > 0 || uploadQueue.length > 0) && (
         <div className="flex flex-row gap-2 overflow-x-scroll items-end">
           {attachments.map((attachment) => (
-            <PreviewAttachment key={attachment.url} attachment={attachment} />
+            <PreviewAttachment
+              key={`${attachment.url}-${attachment.name}`}
+              attachment={attachment}
+            />
           ))}
 
           {uploadQueue.map((filename) => (
             <PreviewAttachment
-              key={filename}
+              key={`uploading-${filename}-${Date.now()}`}
               attachment={{
                 url: "",
                 name: filename,

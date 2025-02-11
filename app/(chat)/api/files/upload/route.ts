@@ -1,7 +1,7 @@
 import { put } from "@vercel/blob";
 import { z } from "zod";
 import { GoogleAIFileManager, FileState } from "@google/generative-ai/server";
-import { writeFile } from "fs/promises";
+import { writeFile, readFile, open, mkdir, unlink } from "fs/promises";
 import { join } from "path";
 import os from "os";
 
@@ -27,69 +27,94 @@ const FileSchema = z.object({
 export async function POST(request: Request) {
   const session = await auth();
   if (!session) {
-    console.log("unauthorized request detected");
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const contentType = request.headers.get("content-type") || "";
+  const contentRange = request.headers.get("content-range");
+  const fileName = request.headers.get("x-file-name");
 
-  // Handle streaming video upload
-  if (contentType === "video/mp4") {
-    console.log("handling streaming video upload");
+  // Handle chunked video upload
+  if (contentType === "video/mp4" && contentRange && fileName) {
     try {
-      const chunks = [];
-      const reader = request.body!.getReader();
+      const [, start, end, total] =
+        contentRange.match(/bytes (\d+)-(\d+)\/(\d+)/) || [];
+      const chunk = await request.arrayBuffer();
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value);
-      }
+      // Create temp directory if it doesn't exist
+      const tempDir = join(os.tmpdir(), "video-uploads");
+      await mkdir(tempDir, { recursive: true });
 
-      const fileBuffer = Buffer.concat(chunks);
-      const filename = `video-${Date.now()}.mp4`;
+      // Use fileName for the temp file
+      const tempPath = join(tempDir, fileName);
 
-      console.log("uploading to vercel blob");
-      const blobData = await put(filename, fileBuffer, {
-        access: "public",
-      });
-      console.log(`blob upload successful: ${blobData.url}`);
+      // Append chunk to file
+      const fd = await open(tempPath, "a+");
+      await fd.write(Buffer.from(chunk), 0, chunk.byteLength, parseInt(start));
+      await fd.close();
 
-      console.log("processing with gemini");
-      const fileManager = new GoogleAIFileManager(process.env.GOOGLE_API_KEY!);
-      const tempPath = join(os.tmpdir(), filename);
-      await writeFile(tempPath, fileBuffer);
+      // If this is the last chunk, process the complete file
+      if (parseInt(end) + 1 === parseInt(total)) {
+        console.log("uploading complete file to vercel blob");
+        const fileBuffer = await readFile(tempPath);
+        const blobData = await put(fileName, fileBuffer, {
+          access: "public",
+        });
 
-      console.log("uploading to gemini");
-      const uploadResponse = await fileManager.uploadFile(tempPath, {
-        mimeType: "video/mp4",
-        displayName: filename,
-      });
-      console.log("gemini upload complete, waiting for processing");
-
-      let geminiFile = await fileManager.getFile(uploadResponse.file.name);
-      while (geminiFile.state === FileState.PROCESSING) {
-        console.log("gemini still processing, waiting...");
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-        geminiFile = await fileManager.getFile(uploadResponse.file.name);
-      }
-
-      if (geminiFile.state === FileState.FAILED) {
-        console.log("gemini processing failed");
-        return Response.json(
-          { error: "Video processing failed" },
-          { status: 500 }
+        console.log("processing with gemini");
+        const fileManager = new GoogleAIFileManager(
+          process.env.GOOGLE_API_KEY!
         );
+
+        console.log("uploading to gemini");
+        const uploadResponse = await fileManager.uploadFile(tempPath, {
+          mimeType: "video/mp4",
+          displayName: fileName,
+        });
+
+        // Wait for file to be active
+        let geminiFile = await fileManager.getFile(uploadResponse.file.name);
+        let attempts = 0;
+        const maxAttempts = 10;
+
+        while (
+          geminiFile.state !== FileState.ACTIVE &&
+          attempts < maxAttempts
+        ) {
+          console.log(`waiting for file to be active, attempt ${attempts + 1}`);
+          await new Promise((resolve) => setTimeout(resolve, 2000)); // Wait 2 seconds
+          geminiFile = await fileManager.getFile(uploadResponse.file.name);
+          attempts++;
+        }
+
+        if (geminiFile.state !== FileState.ACTIVE) {
+          throw new Error(
+            "File failed to become active after multiple attempts"
+          );
+        }
+
+        // Clean up temp file
+        await unlink(tempPath);
+
+        return Response.json({
+          ...blobData,
+          geminiUri: geminiFile.uri,
+        });
       }
 
-      console.log("gemini processing complete", geminiFile);
+      // Return progress for non-final chunks
       return Response.json({
-        ...blobData,
-        geminiUri: geminiFile.uri,
+        status: "chunk-received",
+        progress: Math.round((parseInt(end) / parseInt(total)) * 100),
       });
     } catch (error) {
-      console.log("streaming upload error:", error);
-      return Response.json({ error: "Upload failed" }, { status: 500 });
+      console.error("Chunked upload error:", error);
+      return Response.json(
+        {
+          error: error instanceof Error ? error.message : "Upload failed",
+        },
+        { status: 500 }
+      );
     }
   }
 
