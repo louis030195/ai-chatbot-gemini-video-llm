@@ -24,6 +24,14 @@ const FileSchema = z.object({
     ),
 });
 
+export const config = {
+  api: {
+    bodyParser: false,
+    // Increase the limit for video uploads
+    maxDuration: 60, // 60 seconds timeout
+  },
+};
+
 export async function POST(request: Request) {
   console.log("starting file upload request");
   const session = await auth();
